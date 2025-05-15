@@ -338,7 +338,7 @@ protected:
 class PlayerShip :public Ship {
 public:
 	PlayerShip(int w, int h) : Ship(w, h) {
-		texture = LoadTexture("spaceship1.png");
+		texture = LoadTexture("tekstury/spaceship1.png");
 		GenTextureMipmaps(&texture);                                                        // Generate GPU mipmaps for a texture
 		SetTextureFilter(texture, 2);
 		scale = 0.25f;
