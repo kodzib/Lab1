@@ -28,7 +28,7 @@ struct Physics {
 };
 
 struct Renderable {
-	enum Size { SMALL = 1, MEDIUM = 2, LARGE = 4 } size = SMALL;
+	enum Size { SMALL = 1, MEDIUM = 2, LARGE = 4, GIGA = 10 } size = SMALL;
 };
 
 // --- RENDERER ---
@@ -109,10 +109,28 @@ public:
 		return static_cast<int>(render.size);
 	}
 
+	int GetMaxHP() const {
+		switch (render.size) {
+			case Renderable::SMALL: return 25;
+			case Renderable::MEDIUM: return 100;
+			case Renderable::LARGE: return 300;
+			case Renderable::GIGA: return 1000;
+			default: return 1;
+		}
+	}
+
+	void TakeDamage(int dmg) {
+		hp -= dmg;
+	}
+
+	bool IsDead() const {
+		return hp <= 0;
+	}
+
 protected:
 	void init(int screenW, int screenH) {
 		// Choose size
-		render.size = static_cast<Renderable::Size>(1 << GetRandomValue(0, 2));
+		//render.size = static_cast<Renderable::Size>(1 << GetRandomValue(0, 2));
 
 		// Spawn at random edge
 		switch (GetRandomValue(0, 3)) {
@@ -151,6 +169,7 @@ protected:
 	Renderable render;
 
 	int baseDamage = 0;
+	int hp; // Add this line
 	static constexpr float LIFE = 10.f;
 	static constexpr float SPEED_MIN = 125.f;
 	static constexpr float SPEED_MAX = 250.f;
@@ -160,28 +179,51 @@ protected:
 
 class TriangleAsteroid : public Asteroid {
 public:
-	TriangleAsteroid(int w, int h) : Asteroid(w, h) { baseDamage = 5; }
+	TriangleAsteroid(int w, int h) : Asteroid(w, h) {
+		baseDamage = 5;
+		render.size = Renderable::SMALL; // Set size to GIGA
+		hp = GetMaxHP(); // Set correct HP for GIGA after size is set
+	}
 	void Draw() const override {
 		Renderer::Instance().DrawPoly(transform.position, 3, GetRadius(), transform.rotation);
 	}
 };
 class SquareAsteroid : public Asteroid {
 public:
-	SquareAsteroid(int w, int h) : Asteroid(w, h) { baseDamage = 10; }
+	SquareAsteroid(int w, int h) : Asteroid(w, h) {
+		baseDamage = 10;
+		render.size = Renderable::MEDIUM; // Set size to GIGA
+		hp = GetMaxHP(); // Set correct HP for GIGA after size is set
+	}
 	void Draw() const override {
 		Renderer::Instance().DrawPoly(transform.position, 4, GetRadius(), transform.rotation);
 	}
 };
 class PentagonAsteroid : public Asteroid {
 public:
-	PentagonAsteroid(int w, int h) : Asteroid(w, h) { baseDamage = 15; }
+	PentagonAsteroid(int w, int h) : Asteroid(w, h) {
+		baseDamage = 15;
+		render.size = Renderable::LARGE; // Set size to GIGA
+		hp = GetMaxHP(); // Set correct HP for GIGA after size is set
+	}
 	void Draw() const override {
 		Renderer::Instance().DrawPoly(transform.position, 5, GetRadius(), transform.rotation);
 	}
 };
+class GigaAsteroid : public Asteroid {
+public:
+	GigaAsteroid(int w, int h) : Asteroid(w, h) {
+		baseDamage = 10;
+		render.size = Renderable::GIGA; // Set size to GIGA
+		hp = GetMaxHP(); // Set correct HP for GIGA after size is set
+	}
+	void Draw() const override {
+		Renderer::Instance().DrawPoly(transform.position, 9, GetRadius(), transform.rotation);
+	}
+};
 
 // Shape selector
-enum class AsteroidShape { TRIANGLE = 3, SQUARE = 4, PENTAGON = 5, RANDOM = 0 };
+enum class AsteroidShape { TRIANGLE = 3, SQUARE = 4, PENTAGON = 5, GIGA = 6, RANDOM = 0 };
 
 // Factory
 static inline std::unique_ptr<Asteroid> MakeAsteroid(int w, int h, AsteroidShape shape) {
@@ -192,26 +234,43 @@ static inline std::unique_ptr<Asteroid> MakeAsteroid(int w, int h, AsteroidShape
 		return std::make_unique<SquareAsteroid>(w, h);
 	case AsteroidShape::PENTAGON:
 		return std::make_unique<PentagonAsteroid>(w, h);
+	case AsteroidShape::GIGA:
+		return std::make_unique<GigaAsteroid>(w, h);
 	default: {
-		return MakeAsteroid(w, h, static_cast<AsteroidShape>(3 + GetRandomValue(0, 2)));
+		int randomShape = GetRandomValue(0, 99); // 0-99 for easier odds adjustment
+		// Example odds: 45% triangle, 30% square, 20% pentagon, 5% giga
+		if (randomShape < 45) {
+			return MakeAsteroid(w, h, AsteroidShape::TRIANGLE);
+		}
+		else if (randomShape < 75) {
+			return MakeAsteroid(w, h, AsteroidShape::SQUARE);
+		}
+		else if (randomShape < 95) {
+			return MakeAsteroid(w, h, AsteroidShape::PENTAGON);
+		}
+		else {
+			return MakeAsteroid(w, h, AsteroidShape::GIGA);
+		}
 	}
 	}
 }
 
 // --- PROJECTILE HIERARCHY ---
-enum class WeaponType { LASER, BULLET, COUNT };
+enum class WeaponType { LASER, BULLET, MINE, COUNT };
 class Projectile {
 public:
-	Projectile(Vector2 pos, Vector2 vel, int dmg, WeaponType wt, float rotation)
+	Projectile(Vector2 pos, Vector2 vel, int dmg, WeaponType wt, float rotation, float time)
 	{
 		transform.position = pos;
 		transform.rotation = rotation;
 		physics.velocity = vel;
 		baseDamage = dmg;
 		type = wt;
+		life = time;
 	}
 	bool Update(float dt) {
 		transform.position = Vector2Add(transform.position, Vector2Scale(physics.velocity, dt));
+		life -= dt;
 
 		if (transform.position.x < 0 ||
 			transform.position.x > Renderer::Instance().Width() ||
@@ -220,13 +279,16 @@ public:
 		{
 			return true;
 		}
+		if (life <= 0.f) {
+			return true;
+		}
 		return false;
 	}
 	void Draw() const {
 		if (type == WeaponType::BULLET) {
 			DrawCircleV(transform.position, 5.f, WHITE);
 		}
-		else {
+		else if (type == WeaponType::LASER) {
 			//static constexpr float LASER_LENGTH = 30.f;
 			//Rectangle lr = { transform.position.x - 2.f, transform.position.y - LASER_LENGTH, 4.f, LASER_LENGTH };
 			//DrawRectangleRec(lr, RED);
@@ -235,13 +297,29 @@ public:
 			Vector2 origin = { 2.f, LASER_LENGTH / 2.f };
 			DrawRectanglePro(lr, origin, 90.0f + transform.rotation * 180.0f / PI, RED);
 		}
+		else {
+			DrawCircleV(transform.position, 10.f, GRAY); //mina
+		}
 	}
 	Vector2 GetPosition() const {
 		return transform.position;
 	}
 
 	float GetRadius() const {
-		return (type == WeaponType::BULLET) ? 5.f : 2.f;
+		switch (type)
+		{
+		case WeaponType::LASER:
+			return 2.f; // laser width
+			break;
+		case WeaponType::BULLET:
+			return 5.f; // bullet radius
+			break;
+		case WeaponType::MINE:
+			return 10.f; // mine radius
+			break;
+		default:
+			break;
+		}
 	}
 
 	int GetDamage() const {
@@ -253,6 +331,7 @@ private:
 	Physics    physics;
 	int        baseDamage;
 	WeaponType type;
+	float      life;
 };
 
 inline static Projectile MakeProjectile(WeaponType wt,
@@ -262,10 +341,13 @@ inline static Projectile MakeProjectile(WeaponType wt,
 {
 	Vector2 vel{ cos(rotation)*speed, sin(rotation)*speed};
 	if (wt == WeaponType::LASER) {
-		return Projectile(pos, vel, 20, wt, rotation);
+		return Projectile(pos, vel, 17, wt, rotation, 10.0f);
+	}
+	else if (wt == WeaponType::BULLET) {
+		return Projectile(pos, vel, 25, wt, rotation, 10.0f);
 	}
 	else {
-		return Projectile(pos, vel, 10, wt, rotation);
+		return Projectile(pos, {0.0f, 0.0f}, 150, wt, rotation, 10.0f); // mina
 	}
 }
 
@@ -274,8 +356,8 @@ class Ship {
 public:
 	Ship(int screenW, int screenH) {
 		transform.position = {
-												 screenW * 0.5f,
-												 screenH * 0.5f
+			screenW * 0.5f,
+			screenH * 0.5f
 		};
 		hp = 100;
 		speed = 250.f;
@@ -284,7 +366,8 @@ public:
 
 		// per-weapon fire rate & spacing
 		fireRateLaser = 18.f; // shots/sec
-		fireRateBullet = 22.f;
+		fireRateBullet = 12.f;
+		fireRateMine = 2.0f; // shots/sec
 		spacingLaser = 40.f; // px between lasers
 		spacingBullet = 20.f;
 	}
@@ -313,7 +396,20 @@ public:
 	}
 
 	float GetFireRate(WeaponType wt) const {
-		return (wt == WeaponType::LASER) ? fireRateLaser : fireRateBullet;
+		switch (wt)
+		{
+		case WeaponType::LASER:
+			return fireRateLaser;
+			break;
+		case WeaponType::BULLET:
+			return fireRateBullet;
+			break;
+		case WeaponType::MINE:
+			return fireRateMine;
+			break;
+		default:
+			break;
+		}
 	}
 
 	float GetSpacing(WeaponType wt) const {
@@ -331,6 +427,7 @@ protected:
 	bool       alive;
 	float      fireRateLaser;
 	float      fireRateBullet;
+	float      fireRateMine;
 	float      spacingLaser;
 	float      spacingBullet;
 };
@@ -339,7 +436,7 @@ class PlayerShip :public Ship {
 public:
 	PlayerShip(int w, int h) : Ship(w, h) {
 		texture = LoadTexture("tekstury/spaceship1.png");
-		GenTextureMipmaps(&texture);                                                        // Generate GPU mipmaps for a texture
+		GenTextureMipmaps(&texture);// Generate GPU mipmaps for a texture
 		SetTextureFilter(texture, 2);
 		scale = 0.25f;
 	}
@@ -431,8 +528,11 @@ public:
 			if (IsKeyPressed(KEY_THREE)) {
 				currentShape = AsteroidShape::PENTAGON;
 			}
-			if (IsKeyPressed(KEY_FOUR)) {
+			if (IsKeyPressed(KEY_FIVE)) {
 				currentShape = AsteroidShape::RANDOM;
+			}
+			if (IsKeyPressed(KEY_FOUR)) {
+				currentShape = AsteroidShape::GIGA;
 			}
 
 			// Weapon switch
@@ -494,7 +594,10 @@ public:
 				for (auto ait = asteroids.begin(); ait != asteroids.end(); ++ait) {
 					float dist = Vector2Distance((*pit).GetPosition(), (*ait)->GetPosition());
 					if (dist < (*pit).GetRadius() + (*ait)->GetRadius()) {
-						ait = asteroids.erase(ait);
+						(*ait)->TakeDamage((*pit).GetDamage());
+						if ((*ait)->IsDead()) {
+							ait = asteroids.erase(ait);
+						}
 						pit = projectiles.erase(pit);
 						removed = true;
 						break;
@@ -532,8 +635,22 @@ public:
 
 				DrawText(TextFormat("HP: %d", player->GetHP()),
 					10, 10, 20, GREEN);
-
-				const char* weaponName = (currentWeapon == WeaponType::LASER) ? "LASER" : "BULLET";
+				const char* weaponName = nullptr;
+				switch (currentWeapon) {
+				case WeaponType::LASER:
+					weaponName = "LASER";
+					break;
+				case WeaponType::BULLET:
+					weaponName = "BULLET";
+					break;
+				case WeaponType::MINE:
+					weaponName = "MINE";
+					break;
+				default:
+					weaponName = "UNKNOWN";
+					break;
+				}
+				//const char* weaponName = (currentWeapon == WeaponType::LASER) ? "LASER" : "BULLET";
 				DrawText(TextFormat("Weapon: %s", weaponName),
 					10, 40, 20, BLUE);
 
@@ -561,7 +678,7 @@ private:
 	std::vector<std::unique_ptr<Asteroid>> asteroids;
 	std::vector<Projectile> projectiles;
 
-	AsteroidShape currentShape = AsteroidShape::TRIANGLE;
+	AsteroidShape currentShape = AsteroidShape::RANDOM;
 
 	static constexpr int C_WIDTH = 900;
 	static constexpr int C_HEIGHT = 900;
