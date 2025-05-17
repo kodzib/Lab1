@@ -42,6 +42,7 @@ public:
 	void Init(int w, int h, const char* title) {
 		InitWindow(w, h, title);
 		SetTargetFPS(60);
+		ToggleFullscreen();
 		screenW = w;
 		screenH = h;
 	}
@@ -56,7 +57,8 @@ public:
 	}
 
 	void DrawPoly(const Vector2& pos, int sides, float radius, float rot) {
-		DrawPolyLines(pos, sides, radius, rot, WHITE);
+		float thickness = 4.0f;
+		DrawPolyLinesEx(pos, sides, radius, rot, thickness, WHITE);
 	}
 
 	int Width() const {
@@ -129,9 +131,6 @@ public:
 
 protected:
 	void init(int screenW, int screenH) {
-		// Choose size
-		//render.size = static_cast<Renderable::Size>(1 << GetRandomValue(0, 2));
-
 		// Spawn at random edge
 		switch (GetRandomValue(0, 3)) {
 		case 0:
@@ -169,7 +168,7 @@ protected:
 	Renderable render;
 
 	int baseDamage = 0;
-	int hp; // Add this line
+	int hp;
 	static constexpr float LIFE = 10.f;
 	static constexpr float SPEED_MIN = 125.f;
 	static constexpr float SPEED_MAX = 250.f;
@@ -181,8 +180,8 @@ class TriangleAsteroid : public Asteroid {
 public:
 	TriangleAsteroid(int w, int h) : Asteroid(w, h) {
 		baseDamage = 5;
-		render.size = Renderable::SMALL; // Set size to GIGA
-		hp = GetMaxHP(); // Set correct HP for GIGA after size is set
+		render.size = Renderable::SMALL;
+		hp = GetMaxHP();
 	}
 	void Draw() const override {
 		Renderer::Instance().DrawPoly(transform.position, 3, GetRadius(), transform.rotation);
@@ -192,8 +191,8 @@ class SquareAsteroid : public Asteroid {
 public:
 	SquareAsteroid(int w, int h) : Asteroid(w, h) {
 		baseDamage = 10;
-		render.size = Renderable::MEDIUM; // Set size to GIGA
-		hp = GetMaxHP(); // Set correct HP for GIGA after size is set
+		render.size = Renderable::MEDIUM;
+		hp = GetMaxHP();
 	}
 	void Draw() const override {
 		Renderer::Instance().DrawPoly(transform.position, 4, GetRadius(), transform.rotation);
@@ -203,8 +202,8 @@ class PentagonAsteroid : public Asteroid {
 public:
 	PentagonAsteroid(int w, int h) : Asteroid(w, h) {
 		baseDamage = 15;
-		render.size = Renderable::LARGE; // Set size to GIGA
-		hp = GetMaxHP(); // Set correct HP for GIGA after size is set
+		render.size = Renderable::LARGE;
+		hp = GetMaxHP();
 	}
 	void Draw() const override {
 		Renderer::Instance().DrawPoly(transform.position, 5, GetRadius(), transform.rotation);
@@ -214,8 +213,8 @@ class GigaAsteroid : public Asteroid {
 public:
 	GigaAsteroid(int w, int h) : Asteroid(w, h) {
 		baseDamage = 10;
-		render.size = Renderable::GIGA; // Set size to GIGA
-		hp = GetMaxHP(); // Set correct HP for GIGA after size is set
+		render.size = Renderable::GIGA;
+		hp = GetMaxHP();
 	}
 	void Draw() const override {
 		Renderer::Instance().DrawPoly(transform.position, 9, GetRadius(), transform.rotation);
@@ -237,8 +236,8 @@ static inline std::unique_ptr<Asteroid> MakeAsteroid(int w, int h, AsteroidShape
 	case AsteroidShape::GIGA:
 		return std::make_unique<GigaAsteroid>(w, h);
 	default: {
-		int randomShape = GetRandomValue(0, 99); // 0-99 for easier odds adjustment
-		// Example odds: 45% triangle, 30% square, 20% pentagon, 5% giga
+		int randomShape = GetRandomValue(0, 99);
+		// Odds: 45% triangle, 30% square, 20% pentagon, 5% giga
 		if (randomShape < 45) {
 			return MakeAsteroid(w, h, AsteroidShape::TRIANGLE);
 		}
@@ -289,9 +288,6 @@ public:
 			DrawCircleV(transform.position, 5.f, WHITE);
 		}
 		else if (type == WeaponType::LASER) {
-			//static constexpr float LASER_LENGTH = 30.f;
-			//Rectangle lr = { transform.position.x - 2.f, transform.position.y - LASER_LENGTH, 4.f, LASER_LENGTH };
-			//DrawRectangleRec(lr, RED);
 			static constexpr float LASER_LENGTH = 30.f;
 			Rectangle lr = { transform.position.x, transform.position.y, 4.f, LASER_LENGTH };
 			Vector2 origin = { 2.f, LASER_LENGTH / 2.f };
@@ -494,7 +490,18 @@ public:
 
 	void Run() {
 		srand(static_cast<unsigned>(time(nullptr)));
+
+		InitWindow(100, 100, "DUMMY WINDOW");
+
+		// Step 2: Get monitor size
+		C_WIDTH = GetMonitorWidth(0);
+		C_HEIGHT = GetMonitorHeight(0);
+
+		// Step 3: Close dummy window and open real one
+		CloseWindow();
 		Renderer::Instance().Init(C_WIDTH, C_HEIGHT, "Asteroids OOP");
+
+		Texture2D bg = LoadTexture("tekstury/space.jpg");
 
 		auto player = std::make_unique<PlayerShip>(C_WIDTH, C_HEIGHT);
 
@@ -548,11 +555,6 @@ public:
 					float projSpeed = player->GetSpacing(currentWeapon) * player->GetFireRate(currentWeapon);
 
 					while (shotTimer >= interval) {
-						//Vector2 p = player->GetPosition();
-						//float rot = (player->GetAngle() + 90.0f) * (PI / 180.0f);
-						//p.y -= sin(rot) * player->GetRadius();
-						//p.x -= cos(rot) * player->GetRadius();
-						//projectiles.push_back(MakeProjectile(currentWeapon, p, projSpeed, rot));
                         Vector2 p = player->GetPosition();
                         float rot_deg = player->GetAngle() - 90.0f;
                         float rot_rad = rot_deg * (PI / 180.0f);
@@ -632,7 +634,7 @@ public:
 			// Render everything
 			{
 				Renderer::Instance().Begin();
-
+				DrawTexturePro(bg, Rectangle{0, 0, (float)bg.width, (float)bg.height}, Rectangle{0, 0, (float)Renderer::Instance().Width(), (float)Renderer::Instance().Height()}, Vector2{0, 0}, 0.0f, WHITE);
 				DrawText(TextFormat("HP: %d", player->GetHP()),
 					10, 10, 20, GREEN);
 				const char* weaponName = nullptr;
@@ -650,9 +652,28 @@ public:
 					weaponName = "UNKNOWN";
 					break;
 				}
-				//const char* weaponName = (currentWeapon == WeaponType::LASER) ? "LASER" : "BULLET";
 				DrawText(TextFormat("Weapon: %s", weaponName),
-					10, 40, 20, BLUE);
+					10, 40, 20, GREEN);
+				const char* modeName = nullptr;
+				switch (currentShape) {
+				case AsteroidShape::TRIANGLE:
+					modeName = "TRIANGLE";
+					break;
+				case AsteroidShape::SQUARE:
+					modeName = "SQUARE";
+					break;
+				case AsteroidShape::PENTAGON:
+					modeName = "PENTAGON";
+					break;
+				case AsteroidShape::GIGA:
+					modeName = "GIGA";
+					break;
+				case AsteroidShape::RANDOM: default:
+					modeName = "RANDOM";
+					break;
+				}
+				DrawText(TextFormat("Mode: %s", modeName),
+					10, 60, 20, GREEN);
 
 				for (const auto& projPtr : projectiles) {
 					projPtr.Draw();
@@ -666,13 +687,14 @@ public:
 				Renderer::Instance().End();
 			}
 		}
+		UnloadTexture(bg);
 	}
 
 private:
 	Application()
 	{
-		asteroids.reserve(1000);
-		projectiles.reserve(10'000);
+		asteroids.reserve(C_MAX_ASTEROIDS);
+		projectiles.reserve(C_MAX_PROJECTILES);
 	};
 
 	std::vector<std::unique_ptr<Asteroid>> asteroids;
@@ -680,8 +702,8 @@ private:
 
 	AsteroidShape currentShape = AsteroidShape::RANDOM;
 
-	static constexpr int C_WIDTH = 900;
-	static constexpr int C_HEIGHT = 900;
+	int C_WIDTH = 900;
+	int C_HEIGHT = 900;
 	static constexpr size_t MAX_AST = 150;
 	static constexpr float C_SPAWN_MIN = 0.5f;
 	static constexpr float C_SPAWN_MAX = 3.0f;

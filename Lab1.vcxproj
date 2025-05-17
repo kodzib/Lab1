@@ -131,6 +131,7 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="spaceship1.png" />
+    <Image Include="tekstury\space.jpg" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
